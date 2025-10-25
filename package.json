@@ -22,7 +22,6 @@
   "author": "viztini",
   "license": "MIT",
   "dependencies": {
-    "chalk": "^5.3.0",
-    "chalk-animation": "^2.0.3"
+    "chalk": "^5.3.0"
   }
 }

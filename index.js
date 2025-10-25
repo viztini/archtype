@@ -2,8 +2,14 @@
 
 import readline from 'readline';
 import chalk from 'chalk';
-import chalkAnimation from 'chalk-animation';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { commands, getTimeLimit, getRank } from './commands.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const HIGH_SCORE_FILE = path.join(__dirname, '.highscore.json');
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -17,6 +23,27 @@ let timeLimit = 0;
 let timeRemaining = 0;
 let commandsCompleted = 0;
 let totalScore = 0;
+let currentLevel = 1;
+let highScore = loadHighScore();
+let userInput = '';
+
+// Load high score
+function loadHighScore() {
+  try {
+    if (fs.existsSync(HIGH_SCORE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(HIGH_SCORE_FILE, 'utf8'));
+      return data.highScore || 0;
+    }
+  } catch (e) {}
+  return 0;
+}
+
+// Save high score
+function saveHighScore(score) {
+  try {
+    fs.writeFileSync(HIGH_SCORE_FILE, JSON.stringify({ highScore: score }));
+  } catch (e) {}
+}
 
 // Shuffle commands
 function shuffle(array) {
@@ -33,80 +60,131 @@ const shuffledCommands = shuffle(commands);
 // Clear screen
 function clearScreen() {
   console.clear();
-  process.stdout.write('\x1b[2J\x1b[H');
+  process.stdout.write('\x1b[2J\x1b[H\x1b[?25l');
 }
 
-// Move cursor to position
-function moveCursor(x, y) {
-  process.stdout.write(`\x1b[${y};${x}H`);
+// Get terminal dimensions
+function getTerminalSize() {
+  return {
+    width: process.stdout.columns || 80,
+    height: process.stdout.rows || 24
+  };
 }
 
-// Display header with stats
-function displayHeader() {
-  moveCursor(0, 1);
-  console.log(chalk.bold.blue('╔════════════════════════════════════════════════════════════════════╗'));
-  console.log(chalk.bold.blue('║') + chalk.bold.cyan('                         ARCHTYPE                               ') + chalk.bold.blue('║'));
-  console.log(chalk.bold.blue('╚════════════════════════════════════════════════════════════════════╝'));
-  console.log('');
-  console.log(chalk.gray(`  Commands completed: ${chalk.white(commandsCompleted)}/${commands.length}  •  Total Score: ${chalk.white(totalScore)}`));
-  console.log('');
+// Center text
+function centerText(text, width) {
+  const padding = Math.max(0, Math.floor((width - text.length) / 2));
+  return ' '.repeat(padding) + text;
 }
 
-// Display the command to type
-function displayCommand() {
-  console.log(chalk.bold.white('  Type this command:'));
-  console.log('');
-  console.log('  ' + chalk.bgBlue.white.bold(` ${currentCommand} `));
-  console.log('');
+// Display confetti
+function displayConfetti() {
+  const { width, height } = getTerminalSize();
+  const confetti = ['*', '+', '·', '•', '◆', '○'];
+  const colors = [chalk.red, chalk.yellow, chalk.green, chalk.cyan, chalk.magenta];
+  
+  let output = '';
+  for (let i = 0; i < 30; i++) {
+    const x = Math.floor(Math.random() * width);
+    const y = Math.floor(Math.random() * (height - 10)) + 3;
+    const char = confetti[Math.floor(Math.random() * confetti.length)];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    output += `\x1b[${y};${x}H${color(char)}`;
+  }
+  process.stdout.write(output);
 }
 
-// Display timer
-function displayTimer() {
+// Display centered UI
+function displayUI() {
+  clearScreen();
+  const { width, height } = getTerminalSize();
+  const centerY = Math.floor(height / 2) - 6;
+  
+  let line = centerY;
+  
+  // Title
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.bold.cyan('ARCHTYPE'), width)}`);
+  line++;
+  
+  // Stats
+  const stats = `Level ${currentLevel}  |  Score: ${totalScore}  |  High Score: ${highScore}  |  Completed: ${commandsCompleted}/${commands.length}`;
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.gray(stats), width)}`);
+  line += 2;
+  
+  // Command to type
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.white('Type this command:'), width)}`);
+  line++;
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.bgBlue.white.bold(` ${currentCommand} `), width)}`);
+  line += 2;
+  
+  // Timer bar
   const percentage = (timeRemaining / timeLimit) * 100;
   let color = chalk.green;
-  
   if (percentage < 30) color = chalk.red;
   else if (percentage < 50) color = chalk.yellow;
   
-  const barLength = 50;
+  const barLength = Math.min(60, width - 20);
   const filled = Math.round((timeRemaining / timeLimit) * barLength);
   const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
   
-  console.log('  ' + color(`Time: ${timeRemaining.toFixed(1)}s / ${timeLimit.toFixed(1)}s`));
-  console.log('  ' + color(bar));
-  console.log('');
+  const timeText = `${timeRemaining.toFixed(1)}s / ${timeLimit.toFixed(1)}s`;
+  process.stdout.write(`\x1b[${line++};0H${centerText(color(timeText), width)}`);
+  process.stdout.write(`\x1b[${line++};0H${centerText(color(bar), width)}`);
+  line += 2;
+  
+  // User input
+  const inputDisplay = userInput || '';
+  const displayText = inputDisplay.length <= currentCommand.length 
+    ? chalk.cyan(inputDisplay) + chalk.gray(currentCommand.slice(inputDisplay.length))
+    : chalk.cyan(inputDisplay);
+  process.stdout.write(`\x1b[${line};0H${centerText(displayText, width)}`);
 }
 
 // Display rank animation
 async function displayRank(rankData, timeUsed) {
   return new Promise((resolve) => {
     clearScreen();
+    const { width, height } = getTerminalSize();
+    const centerY = Math.floor(height / 2) - 4;
     
-    const rankArt = `
-    
-    ███████╗  ████████╗   █████╗   ███╗   ██╗  ██╗  ██╗
-    ██╔══██╗  ╚══██╔══╝  ██╔══██╗  ████╗  ██║  ██║ ██╔╝
-    ██████╔╝     ██║     ███████║  ██╔██╗ ██║  █████╔╝ 
-    ██╔══██╗     ██║     ██╔══██║  ██║╚██╗██║  ██╔═██╗ 
-    ██║  ██║     ██║     ██║  ██║  ██║ ╚████║  ██║  ██╗
-    ╚═╝  ╚═╝     ╚═╝     ╚═╝  ╚═╝  ╚═╝  ╚═══╝  ╚═╝  ╚═╝
-    
-           ${rankData.rank} - ${rankData.message}
-           
-           Time: ${timeUsed.toFixed(2)}s
-    `;
-    
-    moveCursor(0, 3);
-    
-    const colorFn = chalk[rankData.color];
-    const rainbow = chalkAnimation.rainbow(rankArt);
+    // Show confetti
+    displayConfetti();
     
     setTimeout(() => {
-      rainbow.stop();
-      console.log(colorFn.bold(rankArt));
+      clearScreen();
+      displayConfetti();
+      
+      let line = centerY;
+      const colorFn = chalk[rankData.color];
+      
+      // Rank letter (big)
+      const rankSize = `
+        ████████████
+        ████████████
+        ████████████
+           ${rankData.rank} RANK
+        ████████████
+        ████████████
+        ████████████
+      `;
+      
+      process.stdout.write(`\x1b[${line++};0H${centerText(colorFn.bold('═══════════════════════════════'), width)}`);
+      line++;
+      process.stdout.write(`\x1b[${line++};0H${centerText(colorFn.bold(`${rankData.rank} RANK`), width)}`);
+      process.stdout.write(`\x1b[${line++};0H${centerText(colorFn(rankData.message), width)}`);
+      line++;
+      process.stdout.write(`\x1b[${line++};0H${centerText(chalk.white(`Time: ${timeUsed.toFixed(2)}s`), width)}`);
+      process.stdout.write(`\x1b[${line++};0H${centerText(colorFn.bold('═══════════════════════════════'), width)}`);
+      
+      displayConfetti();
       setTimeout(resolve, 2000);
-    }, 1000);
+    }, 500);
   });
+}
+
+// Calculate speed multiplier based on level
+function getSpeedMultiplier() {
+  return 1 + (currentLevel - 1) * 0.1;
 }
 
 // Start timer countdown
@@ -114,40 +192,42 @@ function startTimer() {
   startTime = Date.now();
   timeRemaining = timeLimit;
   
+  const speedMultiplier = getSpeedMultiplier();
+  const updateInterval = Math.max(50, 100 / speedMultiplier);
+  
   timerInterval = setInterval(() => {
-    timeRemaining = timeLimit - (Date.now() - startTime) / 1000;
+    timeRemaining = timeLimit - ((Date.now() - startTime) / 1000) * speedMultiplier;
     
     if (timeRemaining <= 0) {
       clearInterval(timerInterval);
       handleTimeout();
     } else {
-      updateDisplay();
+      displayUI();
     }
-  }, 100);
+  }, updateInterval);
 }
 
 // Update display during typing
 function updateDisplay() {
-  clearScreen();
-  displayHeader();
-  displayCommand();
-  displayTimer();
-  process.stdout.write(chalk.white('  > '));
+  displayUI();
 }
 
 // Handle timeout
-function handleTimeout() {
+async function handleTimeout() {
   clearInterval(timerInterval);
-  rl.close();
   
   clearScreen();
-  console.log('');
-  console.log(chalk.red.bold('  ⏰ TIME\'S UP!'));
-  console.log('');
-  console.log(chalk.white(`  You completed ${chalk.cyan.bold(commandsCompleted)} out of ${commands.length} commands!`));
-  console.log(chalk.white(`  Total Score: ${chalk.yellow.bold(totalScore)}`));
-  console.log('');
-  process.exit(0);
+  const { width, height } = getTerminalSize();
+  const centerY = Math.floor(height / 2) - 3;
+  
+  let line = centerY;
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.red.bold('TRY AGAIN'), width)}`);
+  line++;
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.gray(`Command was: ${chalk.white(currentCommand)}`), width)}`);
+  
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  nextCommand();
 }
 
 // Handle correct answer
@@ -163,15 +243,33 @@ async function handleCorrect(timeUsed) {
   totalScore += points;
   commandsCompleted++;
   
+  // Level up every 10 commands
+  if (commandsCompleted % 10 === 0) {
+    currentLevel++;
+  }
+  
+  // Update high score
+  if (totalScore > highScore) {
+    highScore = totalScore;
+    saveHighScore(highScore);
+  }
+  
   await displayRank(rankData, timeUsed);
   
   if (commandsCompleted >= commands.length) {
     clearScreen();
-    console.log('');
-    console.log(chalk.green.bold('  🎉 CONGRATULATIONS! YOU COMPLETED ALL COMMANDS!'));
-    console.log('');
-    console.log(chalk.white(`  Final Score: ${chalk.yellow.bold(totalScore)}`));
-    console.log('');
+    const { width, height } = getTerminalSize();
+    const centerY = Math.floor(height / 2) - 4;
+    
+    let line = centerY;
+    process.stdout.write(`\x1b[${line++};0H${centerText(chalk.green.bold('CONGRATULATIONS'), width)}`);
+    line++;
+    process.stdout.write(`\x1b[${line++};0H${centerText(chalk.white('You completed all commands!'), width)}`);
+    line++;
+    process.stdout.write(`\x1b[${line++};0H${centerText(chalk.yellow.bold(`Final Score: ${totalScore}`), width)}`);
+    process.stdout.write(`\x1b[${line++};0H${centerText(chalk.gray(`High Score: ${highScore}`), width)}`);
+    
+    process.stdout.write('\x1b[?25h');
     rl.close();
     process.exit(0);
   } else {
@@ -183,9 +281,12 @@ async function handleCorrect(timeUsed) {
 function nextCommand() {
   if (commandsCompleted >= shuffledCommands.length) {
     clearScreen();
-    console.log('');
-    console.log(chalk.green.bold('  🎉 ALL COMMANDS COMPLETED!'));
-    console.log('');
+    const { width, height } = getTerminalSize();
+    const centerY = Math.floor(height / 2);
+    
+    process.stdout.write(`\x1b[${centerY};0H${centerText(chalk.green.bold('ALL COMMANDS COMPLETED'), width)}`);
+    
+    process.stdout.write('\x1b[?25h');
     rl.close();
     process.exit(0);
     return;
@@ -193,76 +294,97 @@ function nextCommand() {
   
   currentCommand = shuffledCommands[commandsCompleted];
   timeLimit = getTimeLimit(currentCommand);
+  userInput = '';
   
-  clearScreen();
-  displayHeader();
-  displayCommand();
-  displayTimer();
-  
-  process.stdout.write(chalk.white('  > '));
-  
+  displayUI();
   startTimer();
 }
 
 // Show intro
 async function showIntro() {
   clearScreen();
+  const { width, height } = getTerminalSize();
+  const centerY = Math.floor(height / 2) - 8;
   
-  const title = `
+  let line = centerY;
   
-  ███████╗  ██████╗   ██████╗  ██╗  ██╗ ████████╗ ██╗   ██╗ ██████╗   ███████╗
-  ██╔══██╗  ██╔══██╗ ██╔════╝  ██║  ██║ ╚══██╔══╝ ╚██╗ ██╔╝ ██╔══██╗  ██╔════╝
-  ███████║  ██████╔╝ ██║       ███████║    ██║     ╚████╔╝  ██████╔╝  █████╗  
-  ██╔══██║  ██╔══██╗ ██║       ██╔══██║    ██║      ╚██╔╝   ██╔═══╝   ██╔══╝  
-  ██║  ██║  ██║  ██║ ╚██████╗  ██║  ██║    ██║       ██║    ██║       ███████╗
-  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═════╝  ╚═╝  ╚═╝    ╚═╝       ╚═╝    ╚═╝       ╚══════╝
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.bold.cyan('╔═══════════════════════════════════════╗'), width)}`);
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.bold.cyan('║           A R C H T Y P E             ║'), width)}`);
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.bold.cyan('╚═══════════════════════════════════════╝'), width)}`);
+  line += 2;
   
-                    MonkeyType for Arch Linux Commands
-                    
-  `;
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.white('MonkeyType for Arch Linux Commands'), width)}`);
+  line += 2;
   
-  const rainbow = chalkAnimation.rainbow(title);
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.gray('Type commands as fast as you can'), width)}`);
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.gray('Timer speeds up as you level up'), width)}`);
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.gray('Get ranked: S, A, B, C, or D'), width)}`);
+  process.stdout.write(`\x1b[${line++};0H${centerText(chalk.gray('150+ commands to master'), width)}`);
+  line += 2;
   
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  rainbow.stop();
+  if (highScore > 0) {
+    process.stdout.write(`\x1b[${line++};0H${centerText(chalk.yellow(`High Score: ${highScore}`), width)}`);
+    line++;
+  }
   
-  console.log(chalk.cyan.bold(title));
-  console.log(chalk.white('  📝 Type Arch Linux commands as fast as you can!'));
-  console.log(chalk.white('  ⏱️  Each command has a time limit based on its length'));
-  console.log(chalk.white('  🏆 Get ranked: S, A, B, C, or D based on your speed'));
-  console.log(chalk.white('  💯 150+ commands to master!'));
-  console.log('');
-  console.log(chalk.gray('  Press ENTER to start...'));
+  process.stdout.write(`\x1b[${line};0H${centerText(chalk.white('Press ENTER to start...'), width)}`);
   
   await new Promise(resolve => {
     rl.once('line', resolve);
   });
 }
 
-// Initialize game
-async function init() {
-  console.log(chalk.bold.cyan('\n  Loading ARCHTYPE...\n'));
+// Handle keypress
+function setupInput() {
+  readline.emitKeypressEvents(process.stdin);
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
   
-  await showIntro();
-  nextCommand();
-  
-  rl.on('line', (input) => {
-    const trimmedInput = input.trim();
+  process.stdin.on('keypress', (char, key) => {
+    if (key && key.ctrl && key.name === 'c') {
+      clearInterval(timerInterval);
+      process.stdout.write('\x1b[?25h');
+      process.exit(0);
+    }
     
-    if (trimmedInput === currentCommand) {
-      const timeUsed = (Date.now() - startTime) / 1000;
-      handleCorrect(timeUsed);
-    } else {
-      // Wrong answer - just continue
-      process.stdout.write(chalk.white('  > '));
+    if (key && key.name === 'return') {
+      if (userInput === currentCommand) {
+        const timeUsed = (Date.now() - startTime) / 1000;
+        handleCorrect(timeUsed);
+      }
+      return;
+    }
+    
+    if (key && key.name === 'backspace') {
+      userInput = userInput.slice(0, -1);
+      displayUI();
+      return;
+    }
+    
+    if (char && !key.ctrl && !key.meta) {
+      userInput += char;
+      
+      if (userInput === currentCommand) {
+        const timeUsed = (Date.now() - startTime) / 1000;
+        handleCorrect(timeUsed);
+      } else {
+        displayUI();
+      }
     }
   });
 }
 
+// Initialize game
+async function init() {
+  await showIntro();
+  setupInput();
+  nextCommand();
+}
+
 // Handle exit
-rl.on('close', () => {
-  clearInterval(timerInterval);
-  process.exit(0);
+process.on('exit', () => {
+  process.stdout.write('\x1b[?25h');
 });
 
 // Start the game
