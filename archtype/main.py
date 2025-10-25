@@ -49,13 +49,20 @@ def main(stdscr):
             show_game_over(stdscr, game_state, quit=True)
             return
         elif status == "TIMEOUT":
-            if handle_timeout(stdscr, game_state):
+            timeout_choice = handle_timeout(stdscr, game_state)
+            if timeout_choice == "RETRY":
                 game_state["current_command_index"] -= 1 # Retry
-            else:
+            elif timeout_choice == "QUIT":
+                show_game_over(stdscr, game_state, quit=True)
+                return
+            else: # SKIP
                 game_state["completed"] += 1 # Skip
         elif status == "CORRECT":
             time_used = time.time() - game_state["start_time"]
-            handle_correct(stdscr, game_state, time_used)
+            correct_status = handle_correct(stdscr, game_state, time_used)
+            if correct_status == "QUIT":
+                show_game_over(stdscr, game_state, quit=True)
+                return
         elif status == "INCORRECT":
             shake_screen(stdscr, game_state)
             game_state["user_input"] = "" # Reset input on wrong enter
@@ -63,19 +70,22 @@ def main(stdscr):
     show_game_over(stdscr, game_state)
 
 def load_commands():
-    with open(os.path.join(os.path.dirname(__file__), 'commands.txt'), 'r') as f:
+    script_path = os.path.dirname(os.path.realpath(__file__))
+    with open(os.path.join(script_path, 'commands.txt'), 'r') as f:
         return [line.strip() for line in f.readlines()]
 
 def load_high_score():
+    script_path = os.path.dirname(os.path.realpath(__file__))
     try:
-        with open(os.path.join(os.path.dirname(__file__), '.highscore.json'), 'r') as f:
+        with open(os.path.join(script_path, '.highscore.json'), 'r') as f:
             data = json.load(f)
             return data.get("highScore", 0)
     except (FileNotFoundError, json.JSONDecodeError):
         return 0
 
 def save_high_score(score):
-    with open(os.path.join(os.path.dirname(__file__), '.highscore.json'), 'w') as f:
+    script_path = os.path.dirname(os.path.realpath(__file__))
+    with open(os.path.join(script_path, '.highscore.json'), 'w') as f:
         json.dump({"highScore": score}, f)
 
 def get_time_limit(command):
@@ -174,7 +184,7 @@ def show_intro(stdscr):
         "150+ commands to master",
         "",
         "Press 'p' to pause.",
-        "Press 'q' to quit.",
+        "Press Ctrl+C to quit.",
         "",
         "Press ENTER to start..."
     ]
@@ -212,10 +222,10 @@ def run_level(stdscr, game_state):
             key = stdscr.getch()
         except curses.error:
             key = -1
+        except KeyboardInterrupt:
+            return "QUIT"
             
         if key != -1:
-            if key == ord('q'):
-                return "QUIT"
             if key == ord('p'):
                 handle_pause(stdscr, game_state)
             elif key in [curses.KEY_ENTER, 10, 13]:
@@ -244,7 +254,11 @@ def handle_correct(stdscr, game_state, time_used):
         game_state["high_score"] = game_state["score"]
         save_high_score(game_state["high_score"])
         
-    display_rank(stdscr, rank_data, time_used)
+    rank_status = display_rank(stdscr, rank_data, time_used)
+    if rank_status == "QUIT":
+        return "QUIT"
+    
+    return "CORRECT"
 
 def handle_pause(stdscr, game_state):
     stdscr.nodelay(False)
@@ -264,11 +278,16 @@ def handle_timeout(stdscr, game_state):
     stdscr.nodelay(False)
     height, width = stdscr.getmaxyx()
     stdscr.addstr(height // 2, 0, center_text("TIME'S UP!", width), curses.color_pair(2) | curses.A_BOLD)
-    stdscr.addstr(height // 2 + 1, 0, center_text("Press 'r' to retry or any other key to skip.", width), curses.color_pair(6))
+    stdscr.addstr(height // 2 + 1, 0, center_text("Press 'r' to retry, 'q' to quit, or any other key to skip.", width), curses.color_pair(6))
     stdscr.refresh()
     
     key = stdscr.getch()
-    return key == ord('r')
+    if key == ord('r'):
+        return "RETRY"
+    elif key == ord('q'):
+        return "QUIT"
+    else:
+        return "SKIP"
 
 def display_rank(stdscr, rank_data, time_used):
     stdscr.clear()
@@ -280,8 +299,14 @@ def display_rank(stdscr, rank_data, time_used):
     
     stdscr.addstr(line, 0, center_text(rank_message, width), curses.color_pair(rank_data['color']) | curses.A_BOLD)
     stdscr.addstr(line + 1, 0, center_text(time_message, width), curses.color_pair(6))
+    stdscr.addstr(height - 1, 0, center_text("Press 'q' to quit or any other key to continue.", width), curses.color_pair(6))
     stdscr.refresh()
-    time.sleep(2)
+    
+    key = stdscr.getch()
+    if key == ord('q'):
+        return "QUIT"
+    else:
+        return "CONTINUE"
 
 def show_game_over(stdscr, game_state, quit=False):
     stdscr.clear()
