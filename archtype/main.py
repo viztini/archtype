@@ -35,6 +35,8 @@ def main(stdscr):
         "start_time": 0,
         "time_limit": 0,
         "time_remaining": 0,
+        "commands": commands,
+        "current_command": ""
     }
 
     show_intro(stdscr)
@@ -42,9 +44,21 @@ def main(stdscr):
     while game_state["completed"] < len(commands):
         next_command(game_state)
         status = run_level(stdscr, game_state)
+        
         if status == "QUIT":
             show_game_over(stdscr, game_state, quit=True)
             return
+        elif status == "TIMEOUT":
+            if handle_timeout(stdscr, game_state):
+                game_state["current_command_index"] -= 1 # Retry
+            else:
+                game_state["completed"] += 1 # Skip
+        elif status == "CORRECT":
+            time_used = time.time() - game_state["start_time"]
+            handle_correct(stdscr, game_state, time_used)
+        elif status == "INCORRECT":
+            shake_screen(stdscr, game_state)
+            game_state["user_input"] = "" # Reset input on wrong enter
     
     show_game_over(stdscr, game_state)
 
@@ -84,25 +98,25 @@ def get_rank(time_used, time_limit):
 def center_text(text, width):
     return text.center(width)
 
-def display_ui(stdscr, game_state):
+def display_ui(stdscr, game_state, offset_x=0, offset_y=0):
     stdscr.clear()
     height, width = stdscr.getmaxyx()
     
-    line = height // 2 - 8
+    line = height // 2 - 8 + offset_y
 
     # Title
-    stdscr.addstr(line, 0, center_text("ARCHTYPE", width), curses.color_pair(1) | curses.A_BOLD)
+    stdscr.addstr(line + offset_y, 0, center_text("ARCHTYPE", width + offset_x), curses.color_pair(1) | curses.A_BOLD)
     line += 2
 
     # Stats
-    stats = f"Level {game_state['level']}  |  Score: {game_state['score']}  |  High Score: {game_state['high_score']}  |  Completed: {game_state['completed']}/{len(load_commands())}"
-    stdscr.addstr(line, 0, center_text(stats, width), curses.color_pair(6))
+    stats = f"Level {game_state['level']}  |  Score: {game_state['score']}  |  High Score: {game_state['high_score']}  |  Completed: {game_state['completed']}/{len(game_state['commands'])}"
+    stdscr.addstr(line + offset_y, 0, center_text(stats, width + offset_x), curses.color_pair(6))
     line += 2
 
     # Command
-    stdscr.addstr(line, 0, center_text("Type this command:", width), curses.color_pair(6))
+    stdscr.addstr(line + offset_y, 0, center_text("Type this command:", width + offset_x), curses.color_pair(6))
     line += 2
-    stdscr.addstr(line, 0, center_text(game_state["current_command"], width), curses.color_pair(3) | curses.A_BOLD)
+    stdscr.addstr(line + offset_y, 0, center_text(game_state["current_command"], width + offset_x), curses.color_pair(3) | curses.A_BOLD)
     line += 2
 
     # Timer
@@ -116,27 +130,26 @@ def display_ui(stdscr, game_state):
     bar_length = min(60, width - 20)
     filled = int((game_state["time_remaining"] / game_state["time_limit"]) * bar_length)
     
-    # Fix for the bug where filled can be greater than bar_length
     filled = max(0, min(bar_length, filled))
     
     bar = '█' * filled + '░' * (bar_length - filled)
     
     time_text = f"{game_state['time_remaining']:.1f}s / {game_state['time_limit']:.1f}s"
-    stdscr.addstr(line, 0, center_text(time_text, width), curses.color_pair(color))
+    stdscr.addstr(line + offset_y, 0, center_text(time_text, width + offset_x), curses.color_pair(color))
     line += 1
-    stdscr.addstr(line, 0, center_text(bar, width), curses.color_pair(color))
+    stdscr.addstr(line + offset_y, 0, center_text(bar, width + offset_x), curses.color_pair(color))
     line += 2
 
     # User input
-    input_display_y = line
-    input_display_x = (width - len(game_state["current_command"])) // 2
+    input_display_y = line + offset_y
+    input_display_x = (width - len(game_state["current_command"])) // 2 + offset_x
     
     for i, char in enumerate(game_state["current_command"]):
         if i < len(game_state["user_input"]):
             if game_state["user_input"][i] == char:
                 stdscr.addch(input_display_y, input_display_x + i, char, curses.color_pair(1))
             else:
-                stdscr.addch(input_display_y, input_display_x + i, char, curses.color_pair(2))
+                stdscr.addch(input_display_y, input_display_x + i, char, curses.color_pair(2) | curses.A_UNDERLINE)
         else:
             stdscr.addch(input_display_y, input_display_x + i, char, curses.color_pair(7))
             
@@ -160,6 +173,9 @@ def show_intro(stdscr):
         "Get ranked: S, A, B, C, or D",
         "150+ commands to master",
         "",
+        "Press 'p' to pause.",
+        "Press 'q' to quit.",
+        "",
         "Press ENTER to start..."
     ]
     
@@ -174,8 +190,7 @@ def show_intro(stdscr):
             break
 
 def next_command(game_state):
-    commands = load_commands()
-    game_state["current_command"] = commands[game_state["current_command_index"]]
+    game_state["current_command"] = game_state["commands"][game_state["current_command_index"]]
     game_state["time_limit"] = get_time_limit(game_state["current_command"])
     game_state["user_input"] = ""
     game_state["start_time"] = time.time()
@@ -189,7 +204,6 @@ def run_level(stdscr, game_state):
         game_state["time_remaining"] = game_state["time_limit"] - (time.time() - game_state["start_time"])
         
         if game_state["time_remaining"] <= 0:
-            handle_timeout(stdscr, game_state)
             return "TIMEOUT"
             
         display_ui(stdscr, game_state)
@@ -202,13 +216,12 @@ def run_level(stdscr, game_state):
         if key != -1:
             if key == ord('q'):
                 return "QUIT"
-            if key in [curses.KEY_ENTER, 10, 13]:
+            if key == ord('p'):
+                handle_pause(stdscr, game_state)
+            elif key in [curses.KEY_ENTER, 10, 13]:
                 if game_state["user_input"] == game_state["current_command"]:
-                    time_used = time.time() - game_state["start_time"]
-                    handle_correct(stdscr, game_state, time_used)
                     return "CORRECT"
                 else:
-                    handle_incorrect(stdscr, game_state)
                     return "INCORRECT"
             elif key in [curses.KEY_BACKSPACE, 127, 8]:
                 game_state["user_input"] = game_state["user_input"][:-1]
@@ -233,20 +246,29 @@ def handle_correct(stdscr, game_state, time_used):
         
     display_rank(stdscr, rank_data, time_used)
 
-def handle_incorrect(stdscr, game_state):
+def handle_pause(stdscr, game_state):
     stdscr.nodelay(False)
     height, width = stdscr.getmaxyx()
-    stdscr.addstr(height // 2, 0, center_text("WRONG!", width), curses.color_pair(2) | curses.A_BOLD)
+    stdscr.addstr(height // 2, 0, center_text("PAUSED", width), curses.color_pair(3) | curses.A_BOLD)
+    stdscr.addstr(height // 2 + 1, 0, center_text("Press 'p' to resume", width), curses.color_pair(6))
     stdscr.refresh()
-    time.sleep(1)
-    game_state["user_input"] = ""
+    
+    while True:
+        key = stdscr.getch()
+        if key == ord('p'):
+            game_state["start_time"] = time.time() - (game_state["time_limit"] - game_state["time_remaining"])
+            break
+    stdscr.nodelay(True)
 
 def handle_timeout(stdscr, game_state):
     stdscr.nodelay(False)
     height, width = stdscr.getmaxyx()
     stdscr.addstr(height // 2, 0, center_text("TIME'S UP!", width), curses.color_pair(2) | curses.A_BOLD)
+    stdscr.addstr(height // 2 + 1, 0, center_text("Press 'r' to retry or any other key to skip.", width), curses.color_pair(6))
     stdscr.refresh()
-    time.sleep(2)
+    
+    key = stdscr.getch()
+    return key == ord('r')
 
 def display_rank(stdscr, rank_data, time_used):
     stdscr.clear()
@@ -292,6 +314,14 @@ def show_game_over(stdscr, game_state, quit=False):
     stdscr.refresh()
     stdscr.nodelay(False)
     stdscr.getch()
+
+def shake_screen(stdscr, game_state):
+    for i in range(3):
+        display_ui(stdscr, game_state, offset_x=5)
+        time.sleep(0.05)
+        display_ui(stdscr, game_state, offset_x=-5)
+        time.sleep(0.05)
+    display_ui(stdscr, game_state)
 
 if __name__ == "__main__":
     curses.wrapper(main)
