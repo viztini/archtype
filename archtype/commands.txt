@@ -154,3 +154,57 @@ exit
 reboot
 shutdown now
 shutdown -h now
+pacman -Qtd
+pacman -Ql
+pacman -Qo
+pacman -F
+pacman -Sw --cachedir
+pacman -Qk
+yay -G
+yay -Sc
+yay -Y --devel
+systemctl is-active
+systemctl is-enabled
+systemctl mask
+systemctl unmask
+journalctl -p err..alert
+journalctl -u -b -1
+ls -i
+stat
+tune2fs -l
+btrfs filesystem df
+btrfs subvolume list
+btrfs subvolume snapshot
+nmcli radio wifi
+nmcli general status
+ip neigh
+arp-scan -l
+curl -I
+dig
+nslookup
+id
+sudo -l
+getent passwd
+getent group
+chattr +i
+tee
+xargs
+watch
+diff
+rsync -avz --delete
+tar --exclude=
+uptime -p
+watch -n 1 df -h
+vmstat 1
+iostat -x 1
+free -m
+lsattr
+xclip -selection clipboard
+scp -r
+tar --strip-components=1 -xf
+curl -LO
+unrar x
+journalctl -u nginx -b --since "2 hours ago"
+rsync -avz --progress
+sudo rm -rf /
+sudo rm -rf / --no-preserve-root
