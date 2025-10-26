@@ -183,7 +183,6 @@ def show_intro(stdscr):
         "Get ranked: S, A, B, C, or D",
         "150+ commands to master",
         "",
-        "Press 'p' to pause.",
         "Press Ctrl+C to quit.",
         "",
         "Press ENTER to start..."
@@ -226,9 +225,7 @@ def run_level(stdscr, game_state):
             return "QUIT"
             
         if key != -1:
-            if key == ord('p'):
-                handle_pause(stdscr, game_state)
-            elif key in [curses.KEY_ENTER, 10, 13]:
+            if key in [curses.KEY_ENTER, 10, 13]:
                 if game_state["user_input"] == game_state["current_command"]:
                     return "CORRECT"
                 else:
@@ -259,20 +256,6 @@ def handle_correct(stdscr, game_state, time_used):
         return "QUIT"
     
     return "CORRECT"
-
-def handle_pause(stdscr, game_state):
-    stdscr.nodelay(False)
-    height, width = stdscr.getmaxyx()
-    stdscr.addstr(height // 2, 0, center_text("PAUSED", width), curses.color_pair(3) | curses.A_BOLD)
-    stdscr.addstr(height // 2 + 1, 0, center_text("Press 'p' to resume", width), curses.color_pair(6))
-    stdscr.refresh()
-    
-    while True:
-        key = stdscr.getch()
-        if key == ord('p'):
-            game_state["start_time"] = time.time() - (game_state["time_limit"] - game_state["time_remaining"])
-            break
-    stdscr.nodelay(True)
 
 def handle_timeout(stdscr, game_state):
     stdscr.nodelay(False)
