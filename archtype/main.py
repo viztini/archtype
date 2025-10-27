@@ -282,7 +282,7 @@ def display_rank(stdscr, rank_data, time_used):
     
     stdscr.addstr(line, 0, center_text(rank_message, width), curses.color_pair(rank_data['color']) | curses.A_BOLD)
     stdscr.addstr(line + 1, 0, center_text(time_message, width), curses.color_pair(6))
-    stdscr.addstr(height - 1, 0, center_text("Press 'q' to quit or any other key to continue.", width), curses.color_pair(6))
+    stdscr.addstr(height - 1, 0, center_text("Press 'q' to quit or any other key to continue.", width)[:width - 1], curses.color_pair(6))
     stdscr.refresh()
     
     key = stdscr.getch()
