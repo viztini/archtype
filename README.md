@@ -1,6 +1,6 @@
-# Archtype
+# archtype
 
-A typing game for Arch Linux commands, written in Python. Test your typing speed and accuracy with over 200 real Arch Linux commands!
+A typing game for Arch Linux commands, written in Python. Test your typing speed and accuracy with almost 200 real Arch Linux commands!
 
 ## How it works
 
@@ -8,7 +8,7 @@ This game is built using Python's `curses` library to create a terminal-based us
 
 ### Features:
 
-*   **150+ Arch Linux Commands:** A wide range of commands to test your knowledge.
+*   **190+ Arch Linux Commands:** A wide range of commands to test your knowledge.
 *   **Ranking System:** Get a rank from S (Legendary!) to D (Too Slow!) based on your performance.
 *   **Scoring:** Earn points for each correctly typed command and build your high score.
 *   **Interactive Menus:** Retry commands, and quit from different screens.
