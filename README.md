@@ -26,7 +26,12 @@ This game is built using Python's `curses` library to create a terminal-based us
     cd archtype/archtype
     ```
 
-3.  Run the installation script:
+3.  Make the installation script executable:
+    ```bash
+    chmod +x install.sh
+    ```
+
+4.  Run the installation script:
     ```bash
     ./install.sh
     ```
